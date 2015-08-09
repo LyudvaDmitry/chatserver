@@ -2,28 +2,28 @@ package main
 
 import (
 	"bufio"
+	"errors"
 	"fmt"
 	"log"
 	"net"
 	"strings"
 	"sync"
-	"errors"
 )
 
 const (
-	system = "system"
-	all    = "all"
+	system         = "system"
+	all            = "all"
 	welcomeMessage = "Welcome to chat.\r\n" +
-					 "Just enter text to send public message.\r\n" +
-					 "Commands (without quotes):\r\n" +
-					 "'\\to:<user> <message>' to send privately <message> to <user>.\r\n" +
-					 "'\\quit' to leave chat and break connection.\r\n" +
-					 "Currently there are %v user(s) is the chat%v.\r\n"
+		"Just enter text to send public message.\r\n" +
+		"Commands (without quotes):\r\n" +
+		"'\\to:<user> <message>' to send privately <message> to <user>.\r\n" +
+		"'\\quit' to leave chat and break connection.\r\n" +
+		"Currently there are %v user(s) is the chat%v.\r\n"
 )
 
 var (
 	users = make(map[string]*user)
-	n = 0
+	n     = 0
 	mutex sync.Mutex
 )
 
@@ -52,10 +52,10 @@ func main() {
 			continue
 		}
 		log.Printf("%v connected", conn.RemoteAddr())
-		
+
 		fmt.Fprintf(conn, welcomeMessage, n, UserList())
 		name, user, err := NewUser(conn)
-		loop:
+	loop:
 		for {
 			switch {
 			case err == nil:
@@ -65,10 +65,10 @@ func main() {
 			default:
 				log.Println(err)
 				fmt.Fprintf(conn, "Error reading username, try again.\r\n")
-			} 
+			}
 			name, user, err = NewUser(conn)
 		}
-		
+
 		mutex.Lock()
 		n++
 		users[name] = user
@@ -158,7 +158,7 @@ func UserList() string {
 	}
 	str = strings.TrimPrefix(str, ", ")
 	if n > 0 {
-		str = ": " + str 
+		str = ": " + str
 	}
 	return str
 }
