@@ -65,13 +65,13 @@ func (cs *Chatserver) addUser(conn net.Conn) {
 		break
 	}
 	log.Printf("%v joined the chat as %v\n", conn.RemoteAddr(), name)
-	cs.Send(message{system, all, fmt.Sprintf("%v entered chat\r\n", name)})
+	cs.Send(message{system, all, fmt.Sprintf("%v entered chat", name)})
 	u := &user{name, conn, make(chan message)}
 	cs.Lock()
 	cs.userlist[name] = u
 	cs.Unlock()
 	cs.handleUser(u)
-	cs.Send(message{system, name, fmt.Sprintf("Hello, %v. You can start chatting now.\r\n", name)})
+	cs.Send(message{system, name, fmt.Sprintf("Hello, %v. You can start chatting now.", name)})
 }
 
 //handleUser runs goroutines implementing communication with user. They stop as soon
@@ -80,7 +80,7 @@ func (cs *Chatserver) handleUser(User *user) {
 	//Messages for user
 	go func() {
 		for mes := range User.input {
-			fmt.Fprintf(User.conn, "from: %v, to: %v\r\n%v", mes.from, mes.to, mes.string)
+			fmt.Fprintf(User.conn, "from: %v, to: %v\r\n%v\r\n", mes.from, mes.to, mes.string)
 		}
 	}()
 	//Messages from user
@@ -96,22 +96,22 @@ func (cs *Chatserver) handleUser(User *user) {
 			var mes message
 			switch {
 			case str[0] != '\\':
-				mes = message{User.name, all, str + "\r\n"}
+				mes = message{User.name, all, str}
 			case strings.HasPrefix(str, "\\to:"):
 				comm := strings.SplitN(strings.TrimPrefix(str, "\\to:"), " ", 2)
 				if cs.Get(comm[0]) == nil {
-					cs.Send(message{system, User.name, fmt.Sprintf("Error: no such user as %v\r\n", comm[0])})
+					cs.Send(message{system, User.name, fmt.Sprintf("Error: no such user as %v", comm[0])})
 					continue
 				}
 				if len(comm) == 1 {
 					comm = append(comm, "")
 				}
-				mes = message{User.name, comm[0], comm[1] + "\r\n"}
+				mes = message{User.name, comm[0], comm[1]}
 			case strings.HasPrefix(str, "\\quit"):
 				cs.Delete(User.name)
 				return
 			default:
-				cs.Send(message{system, User.name, fmt.Sprint("Unknown command\r\n")})
+				cs.Send(message{system, User.name, fmt.Sprint("Unknown command")})
 				continue
 			}
 			cs.Send(mes)
@@ -150,7 +150,7 @@ func (cs *Chatserver) Delete(name string) {
 	cs.userlist[name].conn.Close()
 	delete(cs.userlist, name)
 	cs.Unlock()
-	cs.Send(message{system, all, fmt.Sprintf("User %v has left the chat\r\n", name)})
+	cs.Send(message{system, all, fmt.Sprintf("User %v has left the chat", name)})
 }
 
 //Get returns user with given username.
