@@ -164,7 +164,7 @@ func (cs *Chatserver) Get(name string) *user {
 func (cs *Chatserver) List() string {
 	temp := make([]string, 0, cs.Len())
 	cs.Lock()
-	for _, user := range  cs.userlist {
+	for _, user := range cs.userlist {
 		temp = append(temp, user.name)
 	}
 	cs.Unlock()
@@ -197,9 +197,9 @@ func (cs *Chatserver) Send(mes message) {
 }
 
 type user struct {
-	name string
-	conn     net.Conn
-	input    chan message
+	name  string
+	conn  net.Conn
+	input chan message
 }
 
 type message struct {
