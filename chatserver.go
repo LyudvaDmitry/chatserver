@@ -1,3 +1,5 @@
+//Package chatserver implements simple chatserver using TCP-socket.
+//Telnet is expected to be used as client.
 package chatserver
 
 import (
@@ -20,14 +22,19 @@ const (
 		"Currently there are %v user(s) is the chat%v.\r\n"
 )
 
+//Chatserver represents chatserver itself.
 type Chatserver struct {
 	userlist map[string]*user
-	sync.Mutex
+	sync.RWMutex
+}
+
+//NewChatserver returns new Chatserver object.
+func NewChatserver() *Chatserver {
+	return &Chatserver{userlist: make(map[string]*user)}
 }
 
 //Run initializes server and starts handling connections.
 func (cs *Chatserver) Run() {
-	cs.userlist = make(map[string]*user)
 	l, err := net.Listen("tcp", ":2000")
 	if err != nil {
 		log.Fatal(err)
@@ -53,7 +60,7 @@ func (cs *Chatserver) addUser(conn net.Conn) {
 	var err error
 	for {
 		fmt.Fprintf(conn, "Please, enter your username\r\n")
-		name, err = cs.getStr(conn)
+		name, err = getStr(conn)
 		if err != nil {
 			fmt.Fprintf(conn, "Error reading username, try again.\r\n")
 			continue
@@ -65,13 +72,13 @@ func (cs *Chatserver) addUser(conn net.Conn) {
 		break
 	}
 	log.Printf("%v joined the chat as %v\n", conn.RemoteAddr(), name)
-	cs.Send(message{system, all, fmt.Sprintf("%v entered chat", name)})
+	cs.send(message{system, all, fmt.Sprintf("%v entered chat", name)})
 	u := &user{name, conn, make(chan message)}
 	cs.Lock()
 	cs.userlist[name] = u
 	cs.Unlock()
 	cs.handleUser(u)
-	cs.Send(message{system, name, fmt.Sprintf("Hello, %v. You can start chatting now.", name)})
+	cs.send(message{system, name, fmt.Sprintf("Hello, %v. You can start chatting now.", name)})
 }
 
 //handleUser runs goroutines implementing communication with user. They stop as soon
@@ -86,7 +93,7 @@ func (cs *Chatserver) handleUser(User *user) {
 	//Messages from user
 	go func() {
 		for {
-			str, err := cs.getStr(User.conn)
+			str, err := getStr(User.conn)
 			if err != nil {
 				log.Println(err)
 				cs.Delete(User.name)
@@ -99,10 +106,6 @@ func (cs *Chatserver) handleUser(User *user) {
 				mes = message{User.name, all, str}
 			case strings.HasPrefix(str, "\\to:"):
 				comm := strings.SplitN(strings.TrimPrefix(str, "\\to:"), " ", 2)
-				if cs.Get(comm[0]) == nil {
-					cs.Send(message{system, User.name, fmt.Sprintf("Error: no such user as %v", comm[0])})
-					continue
-				}
 				if len(comm) == 1 {
 					comm = append(comm, "")
 				}
@@ -111,35 +114,12 @@ func (cs *Chatserver) handleUser(User *user) {
 				cs.Delete(User.name)
 				return
 			default:
-				cs.Send(message{system, User.name, fmt.Sprint("Unknown command")})
+				cs.send(message{system, User.name, fmt.Sprint("Unknown command")})
 				continue
 			}
-			cs.Send(mes)
+			cs.send(mes)
 		}
 	}()
-}
-
-//getStr reads string from given connection and parses it.
-func (cs *Chatserver) getStr(conn net.Conn) (string, error) {
-	str, err := bufio.NewReader(conn).ReadString('\n')
-	if err != nil {
-		return "", err
-	}
-	str = strings.TrimSpace(str)
-	runes := []rune(str)
-	res := make([]rune, len(str))
-	i := 0
-	for _, char := range runes {
-		switch char {
-		case '\b':
-			i--
-		default:
-			res[i] = char
-			i++
-		}
-	}
-	res = res[:i]
-	return string(res), nil
 }
 
 //Delete deletes user from chatserver and closes its connection.
@@ -150,24 +130,24 @@ func (cs *Chatserver) Delete(name string) {
 	cs.userlist[name].conn.Close()
 	delete(cs.userlist, name)
 	cs.Unlock()
-	cs.Send(message{system, all, fmt.Sprintf("User %v has left the chat", name)})
+	cs.send(message{system, all, fmt.Sprintf("User %v has left the chat", name)})
 }
 
 //Get returns user with given username.
 func (cs *Chatserver) Get(name string) *user {
-	cs.Lock()
-	defer cs.Unlock()
+	cs.RLock()
+	defer cs.RUnlock()
 	return cs.userlist[name]
 }
 
 //List returns list of users currenty online as string.
 func (cs *Chatserver) List() string {
 	temp := make([]string, 0, cs.Len())
-	cs.Lock()
+	cs.RLock()
 	for _, user := range cs.userlist {
 		temp = append(temp, user.name)
 	}
-	cs.Unlock()
+	cs.RUnlock()
 	str := strings.Join(temp, ", ")
 	if cap(temp) > 0 {
 		str = ": " + str
@@ -177,13 +157,17 @@ func (cs *Chatserver) List() string {
 
 //Len returns current number of users.
 func (cs *Chatserver) Len() int {
-	cs.Lock()
-	defer cs.Unlock()
+	cs.RLock()
+	defer cs.RUnlock()
 	return len(cs.userlist)
 }
 
-//Send sends given message according to its 'from' and 'to' fields.
-func (cs *Chatserver) Send(mes message) {
+//send sends given message according to its 'from' and 'to' fields.
+func (cs *Chatserver) send(mes message) {
+	if cs.Get(mes.to) == nil {
+		cs.send(message{system, mes.from, fmt.Sprintf("Error: no such user as %v", mes.to)})
+		return
+	}
 	cs.Lock()
 	defer cs.Unlock()
 	log.Printf("Mes(%v->%v): %v", mes.from, mes.to, mes.string)
@@ -206,4 +190,27 @@ type message struct {
 	from string
 	to   string
 	string
+}
+
+//getStr reads string from given connection and parses it.
+func getStr(conn net.Conn) (string, error) {
+	str, err := bufio.NewReader(conn).ReadString('\n')
+	if err != nil {
+		return "", err
+	}
+	str = strings.TrimSpace(str)
+	runes := []rune(str)
+	res := make([]rune, len(runes))
+	i := 0
+	for _, char := range runes {
+		switch char {
+		case '\b':
+			i--
+		default:
+			res[i] = char
+			i++
+		}
+	}
+	res = res[:i]
+	return string(res), nil
 }

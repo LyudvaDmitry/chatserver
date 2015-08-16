@@ -16,7 +16,7 @@ const (
 )
 
 func TestRun(t *testing.T) {
-	var cs Chatserver
+	cs := NewChatserver()
 	go cs.Run()
 	var wg sync.WaitGroup
 	wg.Add(botnum)
